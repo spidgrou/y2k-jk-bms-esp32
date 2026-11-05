@@ -1,0 +1,16 @@
+[Unit]
+Description=BMS Warning Snapshot — dumps the MQTT telemetry buffer when a BMS warning=1 is published
+After=network.target
+
+[Service]
+Type=simple
+Environment=MQTT_BROKER=localhost
+ExecStart=/usr/bin/python3 %h/esp32-jk-bms/scripts/warning-snapshot-logger.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=warning-snapshot
+
+[Install]
+WantedBy=default.target

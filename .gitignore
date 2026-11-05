@@ -1,0 +1,17 @@
+# ESPHome build artifacts
+/.esphome/
+
+# Secrets — never commit
+/secrets.yaml
+
+# Runtime logs
+/logs/
+
+# Backups and editor leftovers
+*.bak
+*.swp
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc

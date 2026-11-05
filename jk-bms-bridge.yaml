@@ -1,0 +1,974 @@
+substitutions:
+  name: jk-bms-bridge
+  friendly_name: "JK BMS Bridge"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: arduino
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: INFO
+  hardware_uart: USB_SERIAL_JTAG
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+  on_connect:
+    - logger.log: "WiFi connesso!"
+  on_disconnect:
+    - logger.log: "WiFi disconnesso!"
+
+ota:
+  platform: esphome
+  password: !secret ota_password
+  on_begin:
+    - logger.log: "OTA update iniziato!"
+  on_end:
+    - logger.log: "OTA update completato!"
+
+safe_mode:
+
+# Globals for offline debounce (10 min = 120 polls x 5s)
+globals:
+  - id: thor_was_online
+    type: bool
+    initial_value: 'true'
+  - id: pos_was_online
+    type: bool
+    initial_value: 'true'
+  - id: zeus_was_online
+    type: bool
+    initial_value: 'true'
+  - id: odin_was_online
+    type: bool
+    initial_value: 'true'
+  - id: maintenance_mode
+    type: bool
+    initial_value: 'false'
+  - id: maintenance_cooldown
+    type: int
+    initial_value: '0'
+  - id: thor_maintenance
+    type: bool
+    initial_value: 'false'
+  - id: pos_maintenance
+    type: bool
+    initial_value: 'false'
+  - id: zeus_maintenance
+    type: bool
+    initial_value: 'false'
+  - id: odin_maintenance
+    type: bool
+    initial_value: 'false'
+  - id: boot_cooldown
+    type: int
+    initial_value: '48'
+
+mqtt:
+  id: mqtt_client
+  broker: !secret mqtt_broker
+  port: 1883
+  discovery: false
+  on_connect:
+    - logger.log: "MQTT connesso!"
+  on_message:
+    - topic: vessels/self/electrical/batteries/maintenance
+      payload: '1'
+      then:
+        - lambda: |-
+            id(maintenance_mode) = true;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Maintenance ON - disconnecting all BLE");
+            id(client0).set_auto_connect(false);
+            id(client0).disconnect();
+            id(client1).set_auto_connect(false);
+            id(client1).disconnect();
+            id(client2).set_auto_connect(false);
+            id(client2).disconnect();
+            id(client3).set_auto_connect(false);
+            id(client3).disconnect();
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":true,"mode":"pause","batteries":"all-disconnected"}'
+    - topic: vessels/self/electrical/batteries/maintenance
+      payload: '0'
+      then:
+        - lambda: |-
+            id(maintenance_mode) = false;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Maintenance OFF - reconnecting BLE");
+            id(client0).set_auto_connect(true);
+            id(client1).set_auto_connect(true);
+            id(client2).set_auto_connect(true);
+            id(client3).set_auto_connect(true);
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":false,"mode":"normal","batteries":"reconnecting"}'
+    # --- Per-battery maintenance: Thor ---
+    - topic: vessels/self/electrical/batteries/Thor/maintenance
+      payload: '1'
+      then:
+        - lambda: |-
+            id(thor_maintenance) = true;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Thor maintenance ON - disconnecting BLE");
+            id(client0).set_auto_connect(false);
+            id(client0).disconnect();
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":true,"mode":"pause","batteries":"Thor"}'
+    - topic: vessels/self/electrical/batteries/Thor/maintenance
+      payload: '0'
+      then:
+        - lambda: |-
+            id(thor_maintenance) = false;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Thor maintenance OFF - reconnecting BLE");
+            id(client0).set_auto_connect(true);
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":false,"mode":"normal","batteries":"Thor"}'
+    # --- Per-battery maintenance: Poseidone ---
+    - topic: vessels/self/electrical/batteries/Poseidone/maintenance
+      payload: '1'
+      then:
+        - lambda: |-
+            id(pos_maintenance) = true;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Poseidone maintenance ON - disconnecting BLE");
+            id(client1).set_auto_connect(false);
+            id(client1).disconnect();
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":true,"mode":"pause","batteries":"Poseidone"}'
+    - topic: vessels/self/electrical/batteries/Poseidone/maintenance
+      payload: '0'
+      then:
+        - lambda: |-
+            id(pos_maintenance) = false;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Poseidone maintenance OFF - reconnecting BLE");
+            id(client1).set_auto_connect(true);
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":false,"mode":"normal","batteries":"Poseidone"}'
+    # --- Per-battery maintenance: Zeus ---
+    - topic: vessels/self/electrical/batteries/Zeus/maintenance
+      payload: '1'
+      then:
+        - lambda: |-
+            id(zeus_maintenance) = true;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Zeus maintenance ON - disconnecting BLE");
+            id(client2).set_auto_connect(false);
+            id(client2).disconnect();
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":true,"mode":"pause","batteries":"Zeus"}'
+    - topic: vessels/self/electrical/batteries/Zeus/maintenance
+      payload: '0'
+      then:
+        - lambda: |-
+            id(zeus_maintenance) = false;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Zeus maintenance OFF - reconnecting BLE");
+            id(client2).set_auto_connect(true);
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":false,"mode":"normal","batteries":"Zeus"}'
+    # --- Per-battery maintenance: Odino ---
+    - topic: vessels/self/electrical/batteries/Odino/maintenance
+      payload: '1'
+      then:
+        - lambda: |-
+            id(odin_maintenance) = true;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Odino maintenance ON - disconnecting BLE");
+            id(client3).set_auto_connect(false);
+            id(client3).disconnect();
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":true,"mode":"pause","batteries":"Odino"}'
+    - topic: vessels/self/electrical/batteries/Odino/maintenance
+      payload: '0'
+      then:
+        - lambda: |-
+            id(odin_maintenance) = false;
+            id(maintenance_cooldown) = 48;
+            ESP_LOGI("maintenance", "Odino maintenance OFF - reconnecting BLE");
+            id(client3).set_auto_connect(true);
+        - mqtt.publish:
+            topic: vessels/self/electrical/batteries/status
+            payload: '{"maintenance":false,"mode":"normal","batteries":"Odino"}'
+
+external_components:
+  - source: github://syssi/esphome-jk-bms
+    refresh: 0s
+
+# BLE: support for 4 simultaneous connections
+esp32_ble:
+  max_connections: 4
+
+esp32_ble_tracker:
+
+# BLE CLIENTS: 4 JK BMS
+ble_client:
+  - mac_address: !secret bms1_mac
+    id: client0
+  - mac_address: !secret bms2_mac
+    id: client1
+  - mac_address: !secret bms3_mac
+    id: client2
+  - mac_address: !secret bms4_mac
+    id: client3
+
+# JK BMS DEFINITIONS
+jk_bms_ble:
+  - ble_client_id: client0
+    protocol_version: JK02_32S
+    throttle: 5s
+    id: bms0
+  - ble_client_id: client1
+    protocol_version: JK02_32S
+    throttle: 5s
+    id: bms1
+  - ble_client_id: client2
+    protocol_version: JK02_32S
+    throttle: 5s
+    id: bms2
+  - ble_client_id: client3
+    protocol_version: JK02_32S
+    throttle: 5s
+    id: bms3
+
+# ===== INTERNAL SENSORS (not published individually) =====
+
+# --- THOR (BMS 0) ---
+sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    total_voltage:
+      name: Thor Voltage
+      id: thor_voltage
+      internal: true
+    current:
+      name: Thor Current
+      id: thor_current
+      internal: true
+    power:
+      name: Thor Power
+      id: thor_power
+      internal: true
+    state_of_charge:
+      name: Thor SOC
+      id: thor_soc
+      internal: true
+    capacity_remaining:
+      name: Thor Capacity Remaining
+      id: thor_cap_rem
+      internal: true
+    full_charge_capacity:
+      name: Thor Full Charge Capacity
+      id: thor_full_cap
+      internal: true
+    min_cell_voltage:
+      name: Thor Min Cell V
+      id: thor_min_cell
+      internal: true
+    max_cell_voltage:
+      name: Thor Max Cell V
+      id: thor_max_cell
+      internal: true
+    delta_cell_voltage:
+      name: Thor Delta Cell V
+      id: thor_delta_cell
+      internal: true
+    cell_voltage_1:
+      name: Thor Cell 1
+      id: thor_cell1
+      internal: true
+    cell_voltage_2:
+      name: Thor Cell 2
+      id: thor_cell2
+      internal: true
+    cell_voltage_3:
+      name: Thor Cell 3
+      id: thor_cell3
+      internal: true
+    cell_voltage_4:
+      name: Thor Cell 4
+      id: thor_cell4
+      internal: true
+    temperature_sensor_1:
+      name: Thor Temp 1
+      id: thor_temp1
+      internal: true
+    temperature_sensor_2:
+      name: Thor Temp 2
+      id: thor_temp2
+      internal: true
+    mosfet_temperature:
+      name: Thor MOSFET Temp
+      id: thor_mosfet_temp
+      internal: true
+    charging_cycles:
+      name: Thor Cycles
+      id: thor_cycles
+      internal: true
+    total_runtime:
+      name: Thor Runtime
+      id: thor_runtime
+      internal: true
+
+  # --- POSEIDONE (BMS 1) ---
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms1
+    total_voltage:
+      name: Poseidone Voltage
+      id: pos_voltage
+      internal: true
+    current:
+      name: Poseidone Current
+      id: pos_current
+      internal: true
+    power:
+      name: Poseidone Power
+      id: pos_power
+      internal: true
+    state_of_charge:
+      name: Poseidone SOC
+      id: pos_soc
+      internal: true
+    capacity_remaining:
+      name: Poseidone Capacity Remaining
+      id: pos_cap_rem
+      internal: true
+    full_charge_capacity:
+      name: Poseidone Full Charge Capacity
+      id: pos_full_cap
+      internal: true
+    min_cell_voltage:
+      name: Poseidone Min Cell V
+      id: pos_min_cell
+      internal: true
+    max_cell_voltage:
+      name: Poseidone Max Cell V
+      id: pos_max_cell
+      internal: true
+    delta_cell_voltage:
+      name: Poseidone Delta Cell V
+      id: pos_delta_cell
+      internal: true
+    cell_voltage_1:
+      name: Poseidone Cell 1
+      id: pos_cell1
+      internal: true
+    cell_voltage_2:
+      name: Poseidone Cell 2
+      id: pos_cell2
+      internal: true
+    cell_voltage_3:
+      name: Poseidone Cell 3
+      id: pos_cell3
+      internal: true
+    cell_voltage_4:
+      name: Poseidone Cell 4
+      id: pos_cell4
+      internal: true
+    temperature_sensor_1:
+      name: Poseidone Temp 1
+      id: pos_temp1
+      internal: true
+    temperature_sensor_2:
+      name: Poseidone Temp 2
+      id: pos_temp2
+      internal: true
+    mosfet_temperature:
+      name: Poseidone MOSFET Temp
+      id: pos_mosfet_temp
+      internal: true
+    charging_cycles:
+      name: Poseidone Cycles
+      id: pos_cycles
+      internal: true
+    total_runtime:
+      name: Poseidone Runtime
+      id: pos_runtime
+      internal: true
+
+  # --- ZEUS (BMS 2) ---
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms2
+    total_voltage:
+      name: Zeus Voltage
+      id: zeus_voltage
+      internal: true
+    current:
+      name: Zeus Current
+      id: zeus_current
+      internal: true
+    power:
+      name: Zeus Power
+      id: zeus_power
+      internal: true
+    state_of_charge:
+      name: Zeus SOC
+      id: zeus_soc
+      internal: true
+    capacity_remaining:
+      name: Zeus Capacity Remaining
+      id: zeus_cap_rem
+      internal: true
+    full_charge_capacity:
+      name: Zeus Full Charge Capacity
+      id: zeus_full_cap
+      internal: true
+    min_cell_voltage:
+      name: Zeus Min Cell V
+      id: zeus_min_cell
+      internal: true
+    max_cell_voltage:
+      name: Zeus Max Cell V
+      id: zeus_max_cell
+      internal: true
+    delta_cell_voltage:
+      name: Zeus Delta Cell V
+      id: zeus_delta_cell
+      internal: true
+    cell_voltage_1:
+      name: Zeus Cell 1
+      id: zeus_cell1
+      internal: true
+    cell_voltage_2:
+      name: Zeus Cell 2
+      id: zeus_cell2
+      internal: true
+    cell_voltage_3:
+      name: Zeus Cell 3
+      id: zeus_cell3
+      internal: true
+    cell_voltage_4:
+      name: Zeus Cell 4
+      id: zeus_cell4
+      internal: true
+    temperature_sensor_1:
+      name: Zeus Temp 1
+      id: zeus_temp1
+      internal: true
+    temperature_sensor_2:
+      name: Zeus Temp 2
+      id: zeus_temp2
+      internal: true
+    mosfet_temperature:
+      name: Zeus MOSFET Temp
+      id: zeus_mosfet_temp
+      internal: true
+    charging_cycles:
+      name: Zeus Cycles
+      id: zeus_cycles
+      internal: true
+    total_runtime:
+      name: Zeus Runtime
+      id: zeus_runtime
+      internal: true
+
+  # --- ODINO (BMS 3) ---
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms3
+    total_voltage:
+      name: Odino Voltage
+      id: odin_voltage
+      internal: true
+    current:
+      name: Odino Current
+      id: odin_current
+      internal: true
+    power:
+      name: Odino Power
+      id: odin_power
+      internal: true
+    state_of_charge:
+      name: Odino SOC
+      id: odin_soc
+      internal: true
+    capacity_remaining:
+      name: Odino Capacity Remaining
+      id: odin_cap_rem
+      internal: true
+    full_charge_capacity:
+      name: Odino Full Charge Capacity
+      id: odin_full_cap
+      internal: true
+    min_cell_voltage:
+      name: Odino Min Cell V
+      id: odin_min_cell
+      internal: true
+    max_cell_voltage:
+      name: Odino Max Cell V
+      id: odin_max_cell
+      internal: true
+    delta_cell_voltage:
+      name: Odino Delta Cell V
+      id: odin_delta_cell
+      internal: true
+    cell_voltage_1:
+      name: Odino Cell 1
+      id: odin_cell1
+      internal: true
+    cell_voltage_2:
+      name: Odino Cell 2
+      id: odin_cell2
+      internal: true
+    cell_voltage_3:
+      name: Odino Cell 3
+      id: odin_cell3
+      internal: true
+    cell_voltage_4:
+      name: Odino Cell 4
+      id: odin_cell4
+      internal: true
+    temperature_sensor_1:
+      name: Odino Temp 1
+      id: odin_temp1
+      internal: true
+    temperature_sensor_2:
+      name: Odino Temp 2
+      id: odin_temp2
+      internal: true
+    mosfet_temperature:
+      name: Odino MOSFET Temp
+      id: odin_mosfet_temp
+      internal: true
+    charging_cycles:
+      name: Odino Cycles
+      id: odin_cycles
+      internal: true
+    total_runtime:
+      name: Odino Runtime
+      id: odin_runtime
+      internal: true
+
+# Text sensors for BMS error strings
+text_sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    errors:
+      name: Thor Errors
+      id: thor_errors
+      internal: true
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms1
+    errors:
+      name: Poseidone Errors
+      id: pos_errors
+      internal: true
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms2
+    errors:
+      name: Zeus Errors
+      id: zeus_errors
+      internal: true
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms3
+    errors:
+      name: Odino Errors
+      id: odin_errors
+      internal: true
+
+# ===== BINARY SENSORS (charge/discharge MOSFET state, balancing, etc) =====
+
+binary_sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms0
+    charging:
+      name: Thor Charging
+      id: thor_charging
+      internal: true
+    discharging:
+      name: Thor Discharging
+      id: thor_discharging
+      internal: true
+    balancing:
+      name: Thor Balancing
+      id: thor_balancing
+      internal: true
+    heating:
+      name: Thor Heating
+      id: thor_heating
+      internal: true
+    online_status:
+      name: Thor Online
+      id: thor_online
+      internal: true
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms1
+    charging:
+      name: Poseidone Charging
+      id: pos_charging
+      internal: true
+    discharging:
+      name: Poseidone Discharging
+      id: pos_discharging
+      internal: true
+    balancing:
+      name: Poseidone Balancing
+      id: pos_balancing
+      internal: true
+    heating:
+      name: Poseidone Heating
+      id: pos_heating
+      internal: true
+    online_status:
+      name: Poseidone Online
+      id: pos_online
+      internal: true
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms2
+    charging:
+      name: Zeus Charging
+      id: zeus_charging
+      internal: true
+    discharging:
+      name: Zeus Discharging
+      id: zeus_discharging
+      internal: true
+    balancing:
+      name: Zeus Balancing
+      id: zeus_balancing
+      internal: true
+    heating:
+      name: Zeus Heating
+      id: zeus_heating
+      internal: true
+    online_status:
+      name: Zeus Online
+      id: zeus_online
+      internal: true
+  - platform: jk_bms_ble
+    jk_bms_ble_id: bms3
+    charging:
+      name: Odino Charging
+      id: odin_charging
+      internal: true
+    discharging:
+      name: Odino Discharging
+      id: odin_discharging
+      internal: true
+    balancing:
+      name: Odino Balancing
+      id: odin_balancing
+      internal: true
+    heating:
+      name: Odino Heating
+      id: odin_heating
+      internal: true
+    online_status:
+      name: Odino Online
+      id: odin_online
+      internal: true
+
+# ===== JSON PUBLICATION OVER MQTT =====
+
+interval:
+  # THOR
+  - interval: 5s
+    then:
+      - lambda: |-
+          if (id(maintenance_mode) || id(thor_maintenance)) {
+            JsonDocument doc;
+            doc["name"] = "Thor";
+            doc["maintenance"] = true;
+            doc["online"] = false;
+            std::string out;
+            serializeJson(doc, out);
+            id(mqtt_client).publish("vessels/self/electrical/batteries/Thor", out.c_str());
+            return;
+          }
+          JsonDocument doc;
+          doc["voltage"] = id(thor_voltage).state;
+          doc["current"] = id(thor_current).state;
+          doc["power"] = id(thor_power).state;
+          doc["soc"] = id(thor_soc).state;
+          doc["capacityRemaining"] = id(thor_cap_rem).state;
+          doc["fullChargeCapacity"] = id(thor_full_cap).state;
+          doc["minCellVoltage"] = id(thor_min_cell).state;
+          doc["maxCellVoltage"] = id(thor_max_cell).state;
+          doc["deltaCellVoltage"] = id(thor_delta_cell).state;
+          doc["cell1"] = id(thor_cell1).state;
+          doc["cell2"] = id(thor_cell2).state;
+          doc["cell3"] = id(thor_cell3).state;
+          doc["cell4"] = id(thor_cell4).state;
+          doc["temp1"] = id(thor_temp1).state;
+          doc["temp2"] = id(thor_temp2).state;
+          doc["mosfetTemp"] = id(thor_mosfet_temp).state;
+          doc["cycles"] = id(thor_cycles).state;
+          doc["runtimeS"] = id(thor_runtime).state;
+          doc["errors"] = id(thor_errors).state;
+          if (id(maintenance_cooldown) > 0) {
+            id(maintenance_cooldown)--;
+            doc["warning"] = 0;
+          } else if (id(boot_cooldown) > 0) {
+            id(boot_cooldown)--;
+            doc["warning"] = 0;
+          } else {
+            // Log cambio stato online/offline
+            {
+              bool online = id(thor_online).state;
+              if (online != id(thor_was_online)) {
+                if (online) ESP_LOGI("thor", "Thor back ONLINE");
+                else ESP_LOGI("thor", "Thor OFFLINE!");
+                id(thor_was_online) = online;
+              }
+            }
+            {
+              int offline_count_all = 0;
+              if (!id(thor_online).state) offline_count_all++;
+              if (!id(pos_online).state) offline_count_all++;
+              if (!id(zeus_online).state) offline_count_all++;
+              if (!id(odin_online).state) offline_count_all++;
+              std::string err = id(thor_errors).state;
+              bool has_errors = id(thor_online).state && !err.empty() && err != "Offline";
+              if (has_errors) { doc["warning"] = 1; ESP_LOGW("thor", "Thor: WARNING -> errors=[%s] online=%d", id(thor_errors).state.c_str(), id(thor_online).state); }
+              else if (offline_count_all >= 3) { doc["warning"] = 1; ESP_LOGW("thor", "Thor: 3+ batterie offline, warning immediato"); }
+              else doc["warning"] = 0;
+            }
+          }
+          doc["name"] = "Thor";
+          doc["charging"] = id(thor_charging).state;
+          doc["discharging"] = id(thor_discharging).state;
+          doc["balancing"] = id(thor_balancing).state;
+          doc["heating"] = id(thor_heating).state;
+          doc["online"] = id(thor_online).state;
+          std::string out;
+          serializeJson(doc, out);
+          id(mqtt_client).publish("vessels/self/electrical/batteries/Thor", out.c_str());
+
+  # POSEIDONE
+  - interval: 5s
+    then:
+      - lambda: |-
+          if (id(maintenance_mode) || id(pos_maintenance)) {
+            JsonDocument doc;
+            doc["name"] = "Poseidone";
+            doc["maintenance"] = true;
+            doc["online"] = false;
+            std::string out;
+            serializeJson(doc, out);
+            id(mqtt_client).publish("vessels/self/electrical/batteries/Poseidone", out.c_str());
+            return;
+          }
+          JsonDocument doc;
+          doc["voltage"] = id(pos_voltage).state;
+          doc["current"] = id(pos_current).state;
+          doc["power"] = id(pos_power).state;
+          doc["soc"] = id(pos_soc).state;
+          doc["capacityRemaining"] = id(pos_cap_rem).state;
+          doc["fullChargeCapacity"] = id(pos_full_cap).state;
+          doc["minCellVoltage"] = id(pos_min_cell).state;
+          doc["maxCellVoltage"] = id(pos_max_cell).state;
+          doc["deltaCellVoltage"] = id(pos_delta_cell).state;
+          doc["cell1"] = id(pos_cell1).state;
+          doc["cell2"] = id(pos_cell2).state;
+          doc["cell3"] = id(pos_cell3).state;
+          doc["cell4"] = id(pos_cell4).state;
+          doc["temp1"] = id(pos_temp1).state;
+          doc["temp2"] = id(pos_temp2).state;
+          doc["mosfetTemp"] = id(pos_mosfet_temp).state;
+          doc["cycles"] = id(pos_cycles).state;
+          doc["runtimeS"] = id(pos_runtime).state;
+          doc["errors"] = id(pos_errors).state;
+          if (id(maintenance_cooldown) > 0) {
+            id(maintenance_cooldown)--;
+            doc["warning"] = 0;
+          } else if (id(boot_cooldown) > 0) {
+            id(boot_cooldown)--;
+            doc["warning"] = 0;
+          } else {
+            // Log cambio stato online/offline
+            {
+              bool online = id(pos_online).state;
+              if (online != id(pos_was_online)) {
+                if (online) ESP_LOGI("pos", "Poseidone back ONLINE");
+                else ESP_LOGI("pos", "Poseidone OFFLINE!");
+                id(pos_was_online) = online;
+              }
+            }
+            {
+              int offline_count_all = 0;
+              if (!id(thor_online).state) offline_count_all++;
+              if (!id(pos_online).state) offline_count_all++;
+              if (!id(zeus_online).state) offline_count_all++;
+              if (!id(odin_online).state) offline_count_all++;
+              std::string err = id(pos_errors).state;
+              bool has_errors = id(pos_online).state && !err.empty() && err != "Offline";
+              if (has_errors) { doc["warning"] = 1; ESP_LOGW("pos", "Poseidone: WARNING -> errors=[%s] online=%d", id(pos_errors).state.c_str(), id(pos_online).state); }
+              else if (offline_count_all >= 3) { doc["warning"] = 1; ESP_LOGW("pos", "Poseidone: 3+ batterie offline, warning immediato"); }
+              else doc["warning"] = 0;
+            }
+          }
+          doc["name"] = "Poseidone";
+          doc["charging"] = id(pos_charging).state;
+          doc["discharging"] = id(pos_discharging).state;
+          doc["balancing"] = id(pos_balancing).state;
+          doc["heating"] = id(pos_heating).state;
+          doc["online"] = id(pos_online).state;
+          std::string out;
+          serializeJson(doc, out);
+          id(mqtt_client).publish("vessels/self/electrical/batteries/Poseidone", out.c_str());
+
+  # ZEUS
+  - interval: 5s
+    then:
+      - lambda: |-
+          if (id(maintenance_mode) || id(zeus_maintenance)) {
+            JsonDocument doc;
+            doc["name"] = "Zeus";
+            doc["maintenance"] = true;
+            doc["online"] = false;
+            std::string out;
+            serializeJson(doc, out);
+            id(mqtt_client).publish("vessels/self/electrical/batteries/Zeus", out.c_str());
+            return;
+          }
+          JsonDocument doc;
+          doc["voltage"] = id(zeus_voltage).state;
+          doc["current"] = id(zeus_current).state;
+          doc["power"] = id(zeus_power).state;
+          doc["soc"] = id(zeus_soc).state;
+          doc["capacityRemaining"] = id(zeus_cap_rem).state;
+          doc["fullChargeCapacity"] = id(zeus_full_cap).state;
+          doc["minCellVoltage"] = id(zeus_min_cell).state;
+          doc["maxCellVoltage"] = id(zeus_max_cell).state;
+          doc["deltaCellVoltage"] = id(zeus_delta_cell).state;
+          doc["cell1"] = id(zeus_cell1).state;
+          doc["cell2"] = id(zeus_cell2).state;
+          doc["cell3"] = id(zeus_cell3).state;
+          doc["cell4"] = id(zeus_cell4).state;
+          doc["temp1"] = id(zeus_temp1).state;
+          doc["temp2"] = id(zeus_temp2).state;
+          doc["mosfetTemp"] = id(zeus_mosfet_temp).state;
+          doc["cycles"] = id(zeus_cycles).state;
+          doc["runtimeS"] = id(zeus_runtime).state;
+          doc["errors"] = id(zeus_errors).state;
+          if (id(maintenance_cooldown) > 0) {
+            id(maintenance_cooldown)--;
+            doc["warning"] = 0;
+          } else if (id(boot_cooldown) > 0) {
+            id(boot_cooldown)--;
+            doc["warning"] = 0;
+          } else {
+            // Log cambio stato online/offline
+            {
+              bool online = id(zeus_online).state;
+              if (online != id(zeus_was_online)) {
+                if (online) ESP_LOGI("zeus", "Zeus back ONLINE");
+                else ESP_LOGI("zeus", "Zeus OFFLINE!");
+                id(zeus_was_online) = online;
+              }
+            }
+            {
+              int offline_count_all = 0;
+              if (!id(thor_online).state) offline_count_all++;
+              if (!id(pos_online).state) offline_count_all++;
+              if (!id(zeus_online).state) offline_count_all++;
+              if (!id(odin_online).state) offline_count_all++;
+              std::string err = id(zeus_errors).state;
+              bool has_errors = id(zeus_online).state && !err.empty() && err != "Offline";
+              if (has_errors) { doc["warning"] = 1; ESP_LOGW("zeus", "Zeus: WARNING -> errors=[%s] online=%d", id(zeus_errors).state.c_str(), id(zeus_online).state); }
+              else if (offline_count_all >= 3) { doc["warning"] = 1; ESP_LOGW("zeus", "Zeus: 3+ batterie offline, warning immediato"); }
+              else doc["warning"] = 0;
+            }
+          }
+          doc["name"] = "Zeus";
+          doc["charging"] = id(zeus_charging).state;
+          doc["discharging"] = id(zeus_discharging).state;
+          doc["balancing"] = id(zeus_balancing).state;
+          doc["heating"] = id(zeus_heating).state;
+          doc["online"] = id(zeus_online).state;
+          std::string out;
+          serializeJson(doc, out);
+          id(mqtt_client).publish("vessels/self/electrical/batteries/Zeus", out.c_str());
+
+  # ODINO
+  - interval: 5s
+    then:
+      - lambda: |-
+          if (id(maintenance_mode) || id(odin_maintenance)) {
+            JsonDocument doc;
+            doc["name"] = "Odino";
+            doc["maintenance"] = true;
+            doc["online"] = false;
+            std::string out;
+            serializeJson(doc, out);
+            id(mqtt_client).publish("vessels/self/electrical/batteries/Odino", out.c_str());
+            return;
+          }
+          JsonDocument doc;
+          doc["voltage"] = id(odin_voltage).state;
+          doc["current"] = id(odin_current).state;
+          doc["power"] = id(odin_power).state;
+          doc["soc"] = id(odin_soc).state;
+          doc["capacityRemaining"] = id(odin_cap_rem).state;
+          doc["fullChargeCapacity"] = id(odin_full_cap).state;
+          doc["minCellVoltage"] = id(odin_min_cell).state;
+          doc["maxCellVoltage"] = id(odin_max_cell).state;
+          doc["deltaCellVoltage"] = id(odin_delta_cell).state;
+          doc["cell1"] = id(odin_cell1).state;
+          doc["cell2"] = id(odin_cell2).state;
+          doc["cell3"] = id(odin_cell3).state;
+          doc["cell4"] = id(odin_cell4).state;
+          doc["temp1"] = id(odin_temp1).state;
+          doc["temp2"] = id(odin_temp2).state;
+          doc["mosfetTemp"] = id(odin_mosfet_temp).state;
+          doc["cycles"] = id(odin_cycles).state;
+          doc["runtimeS"] = id(odin_runtime).state;
+          doc["errors"] = id(odin_errors).state;
+          if (id(maintenance_cooldown) > 0) {
+            id(maintenance_cooldown)--;
+            doc["warning"] = 0;
+          } else if (id(boot_cooldown) > 0) {
+            id(boot_cooldown)--;
+            doc["warning"] = 0;
+          } else {
+            // Log cambio stato online/offline
+            {
+              bool online = id(odin_online).state;
+              if (online != id(odin_was_online)) {
+                if (online) ESP_LOGI("odin", "Odino back ONLINE");
+                else ESP_LOGI("odin", "Odino OFFLINE!");
+                id(odin_was_online) = online;
+              }
+            }
+            {
+              int offline_count_all = 0;
+              if (!id(thor_online).state) offline_count_all++;
+              if (!id(pos_online).state) offline_count_all++;
+              if (!id(zeus_online).state) offline_count_all++;
+              if (!id(odin_online).state) offline_count_all++;
+              std::string err = id(odin_errors).state;
+              bool has_errors = id(odin_online).state && !err.empty() && err != "Offline";
+              if (has_errors) { doc["warning"] = 1; ESP_LOGW("odin", "Odino: WARNING -> errors=[%s] online=%d", id(odin_errors).state.c_str(), id(odin_online).state); }
+              else if (offline_count_all >= 3) { doc["warning"] = 1; ESP_LOGW("odin", "Odino: 3+ batterie offline, warning immediato"); }
+              else doc["warning"] = 0;
+            }
+          }
+          doc["name"] = "Odino";
+          doc["charging"] = id(odin_charging).state;
+          doc["discharging"] = id(odin_discharging).state;
+          doc["balancing"] = id(odin_balancing).state;
+          doc["heating"] = id(odin_heating).state;
+          doc["online"] = id(odin_online).state;
+          std::string out;
+          serializeJson(doc, out);
+          id(mqtt_client).publish("vessels/self/electrical/batteries/Odino", out.c_str());
