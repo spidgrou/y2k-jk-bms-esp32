@@ -1,5 +1,8 @@
 # ESP32-S3 BLE bridge for JK BMS → MQTT
 
+[![ESPHome config](https://github.com/spidgrou/y2k-jk-bms-esp32/actions/workflows/esphome-config.yml/badge.svg)](https://github.com/spidgrou/y2k-jk-bms-esp32/actions/workflows/esphome-config.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Read the data of up to **four JK BMS** units over BLE with a single ESP32-S3 and
 publish them as **one compact JSON payload per battery** to MQTT.
 

@@ -1,0 +1,34 @@
+name: ESPHome config
+
+# Validates jk-bms-bridge.yaml on every push and pull request.
+# secrets.yaml is generated from the public example, so no repository secrets
+# are needed. Bump the pinned ESPHome version together with the minimum
+# version documented in the README.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ESPHome
+        run: pip install "esphome==2026.5.3"
+
+      - name: Create secrets.yaml from the public example
+        run: cp secrets.yaml.example secrets.yaml
+
+      - name: Validate ESPHome configuration
+        run: esphome config jk-bms-bridge.yaml
+
+      - name: Check Python syntax of the helper scripts
+        run: python -m py_compile scripts/*.py
