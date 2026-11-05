@@ -23,12 +23,21 @@ MQTT.
   `esp32-s3-devkitc-1`, PSRAM in octal mode at 80 MHz.
 - **ESPHome** 2026.5.3 or newer.
 - The [`syssi/esphome-jk-bms`](https://github.com/syssi/esphome-jk-bms) external
-  component (pulled automatically by ESPHome, `JK02_32S` protocol, for JK BMS
-  hardware revision 11.0+).
+  component (Apache-2.0), fetched automatically by ESPHome at build time. It
+  supports every JK BMS running software version 6.0 or newer.
 - An MQTT broker reachable from the ESP32.
 
 The Arduino framework is used on purpose: a full build takes ~45 s instead of
 several minutes with ESP-IDF.
+
+### About `protocol_version`
+
+Every `jk_bms_ble` block sets `protocol_version: JK02_32S`. That value chooses
+the **frame format** the BMS sends — it does **not** describe the number of
+cells in your pack, and it is not a hardware revision. `JK02_32S` is the format
+the four units in this project report; if yours speaks a different frame
+format, switch to `JK02_24S` in all four blocks and confirm with
+`esphome logs` that voltages and currents arrive before trusting the bridge.
 
 ## Quick start
 
@@ -188,18 +197,23 @@ with `pip install -r requirements.txt`; the broker is read from `MQTT_BROKER`
 
 ## Limitations
 
-- Cell voltages are exposed for a 4S pack. Other configurations need the sensor
-  block adapted to your BMS (`cell_count`, per-cell sensors).
+- Per-cell voltages are declared for a **4S pack** (`cell_voltage_1` …
+  `cell_voltage_4`). For a pack with more cells, add one `cell_voltage_N`
+  sensor per extra cell inside each `platform: jk_bms_ble` block and publish it
+  in that battery's JSON lambda. Nothing else depends on the cell count.
 - No discovery: topics are fixed, consumers subscribe to
   `vessels/self/electrical/batteries/+`.
 - No authentication on MQTT — keep the broker on a trusted network.
-- The "3+ offline" rule assumes four batteries; with fewer, adjust the
-  threshold.
+- The "3+ offline" rule assumes four batteries; with fewer, change the
+  threshold in the four lambdas.
 
-## License
+## License and credits
 
-MIT — see [LICENSE](LICENSE).
+This repository is released under the **MIT** license — see [LICENSE](LICENSE).
 
-Credits: the JK BMS protocol implementation comes from
-[`syssi/esphome-jk-bms`](https://github.com/syssi/esphome-jk-bms), used here as
-an external component.
+The BLE transport and the JK BMS protocol implementation are provided by
+[`syssi/esphome-jk-bms`](https://github.com/syssi/esphome-jk-bms), released under
+**Apache-2.0** and used here as an external ESPHome component: no third-party
+code is vendored in this repository. The JSON payload, the two-level `warning`
+logic with its cooldowns, the offline detection and the maintenance topics are
+specific to this project.
